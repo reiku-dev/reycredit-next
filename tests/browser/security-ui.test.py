@@ -18,7 +18,7 @@ def stub(page, name, result):
       h[name] = function(){ var f = this.ok; setTimeout(function(){ f(result); }, 0); }; return h; } }); }""", [name, result])
 
 with sync_playwright() as p:
-    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args=["--no-sandbox"])
+    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1243/chrome-linux64/chrome", args=["--no-sandbox"])
     page = b.new_page(viewport={"width": 1100, "height": 900}); errs = []
     page.on("pageerror", lambda e: errs.append(str(e)))
     page.goto(f"http://127.0.0.1:{port}/index.html")

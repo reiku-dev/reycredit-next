@@ -23,7 +23,7 @@ REPORT = {"success":True,"collectionRate":{"month":"October 2026","collected":0,
     "byMonth":[{"label":"Sep 26","interest":0,"charges":0},{"label":"Oct 26","interest":1500,"charges":275}],"loans":[{"name":"Ally","loan":"Cash","interestPaid":1500,"penaltiesPaid":75,"penaltiesCharged":75,"lateFeesPaid":200,"lateFeesCharged":200,"chargesOwed":0}]}}
 
 with sync_playwright() as p:
-    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args=["--no-sandbox"])
+    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1243/chrome-linux64/chrome", args=["--no-sandbox"])
     page = b.new_page(viewport={"width": 390, "height": 900}); errs = []
     page.on("pageerror", lambda e: errs.append(str(e)))
     page.goto(f"http://127.0.0.1:{port}/index.html")

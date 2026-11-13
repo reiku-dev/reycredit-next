@@ -22,7 +22,7 @@ split = {"month":"October 2026","bill":2500,"overdueSeparate":2775,"overdueMonth
 plain = {"month":"October 2026","bill":5275,"overdueSeparate":0,"overdueMonth":""}
 
 with sync_playwright() as p:
-    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args=["--no-sandbox"])
+    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1243/chrome-linux64/chrome", args=["--no-sandbox"])
     page = b.new_page(viewport={"width": 390, "height": 800}); page.goto(URL)
     r = page.evaluate(OPEN, split)
     check("overdue pending: amount is the full overdue (2,775.00)", r["amount"] == "2775.00")

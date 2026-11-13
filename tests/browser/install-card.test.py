@@ -21,7 +21,7 @@ FIRE = """() => { window.__prompted = 0; const e = new Event('beforeinstallpromp
 vis = lambda page: page.evaluate("() => document.getElementById('install-banner').classList.contains('show')")
 
 with sync_playwright() as p:
-    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args=["--no-sandbox"])
+    b = p.chromium.launch(executable_path="/opt/pw-browsers/chromium-1243/chrome-linux64/chrome", args=["--no-sandbox"])
 
     # 1. Android/desktop Chrome: installable
     ctx = b.new_context(viewport={"width": 390, "height": 800}); page = ctx.new_page(); page.goto(URL)

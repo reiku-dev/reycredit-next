@@ -929,18 +929,23 @@ textarea.input{height:auto;padding:10px 12px;}
       <div class="dialog-desc" id="pm-desc">—</div></div>
     <div class="dialog-body">
       <div id="pm-choices" style="display:none;margin-bottom:14px;"></div>
+      <label class="check-row" style="display:flex;gap:10px;align-items:flex-start;margin-bottom:14px;cursor:pointer;">
+        <input type="checkbox" id="pm-waiver" style="margin-top:3px;">
+        <span><span class="strong">This is a waiver, not a payment</span>
+          <span class="tiny muted" style="display:block;">Forgive penalty / late fee. It lowers what the borrower owes but is <b>not</b> counted as money received or as a payment toward the loan.</span></span>
+      </label>
       <div class="field" style="margin-bottom:14px;">
-        <label class="label">Payment month *</label>
+        <label class="label" id="pm-month-label">Payment month *</label>
         <div style="display:grid;grid-template-columns:1fr 110px;gap:8px;">
           <select class="select" id="pm-month"></select>
           <select class="select" id="pm-year"></select>
         </div>
       </div>
       <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-        <div class="field"><label class="label">Amount *</label><input class="input" type="number" id="pm-amount" placeholder="0.00"></div>
-        <div class="field"><label class="label">Date paid *</label><input class="input" type="date" id="pm-date"></div>
-        <div class="field"><label class="label">Receipt no.</label><input class="input" id="pm-receipt" placeholder="Auto"></div>
-        <div class="field"><label class="label">Method</label>
+        <div class="field"><label class="label" id="pm-amount-label">Amount *</label><input class="input" type="number" id="pm-amount" placeholder="0.00"></div>
+        <div class="field"><label class="label" id="pm-date-label">Date paid *</label><input class="input" type="date" id="pm-date"></div>
+        <div class="field"><label class="label" id="pm-receipt-label">Receipt no.</label><input class="input" id="pm-receipt" placeholder="Auto"></div>
+        <div class="field" id="pm-method-wrap"><label class="label">Method</label>
           <select class="select" id="pm-method"><option>GCash</option><option>Maya</option><option>Maribank</option><option>BPI</option><option>Cash</option><option>Other</option></select></div>
       </div>
       <div id="pm-alert" class="alert" style="margin-top:12px;"></div>
@@ -1658,6 +1663,12 @@ function renderDetail(d) {
     var when = h.date
       ? '<span class="muted">' + esc(h.date) + '</span>'
       : '<span class="badge badge-warning">not recorded</span>';
+    if (h.waiver) {
+      return '<tr><td>' + esc(h.month) + ' <span class="badge badge-warning">waiver</span></td>' +
+        '<td class="right num" style="color:hsl(var(--muted-foreground));">\u2212' + money(h.waivedApplied) +
+        '<div class="tiny muted">penalty / fees forgiven, not a payment' + (h.waivedUnused > 0 ? ' \u00B7 ' + money(h.waivedUnused) + ' unused' : '') + '</div></td>' +
+        '<td class="right">' + when + '</td><td class="right muted tiny">' + esc(h.receiptNo || '\u2014') + '</td></tr>';
+    }
     var split = h.toCharges > 0
       ? '<div class="tiny muted">' + money(h.toInstalments) + ' loan · ' + money(h.toCharges) + ' penalty/fees</div>' : '';
     return '<tr><td>' + esc(h.month) + '</td><td class="right num">' + money(h.amount) + split + '</td>' +
@@ -1682,6 +1693,7 @@ function renderDetail(d) {
         row('<span class="strong">Borrower pays you</span>', '<span class="strong">' + money(pf.borrowerTotal) + '</span>') +
         row('<span class="strong">Expected profit</span>', '<span class="strong" style="color:hsl(var(--' + (pf.expectedProfit >= 0 ? 'success' : 'destructive') + '));">' + money(pf.expectedProfit) + '</span> <span class="muted tiny">' + money(pf.interestMarkup) + ' + ' + money(pf.feeIncome) + ' \u2212 ' + money(pf.bankFeeCharged) + ' bank fee</span>') +
         row('Penalties &amp; late fees collected', money(pf.extrasCollected) + (pf.extrasOwed > 0 ? ' <span class="muted tiny">+ ' + money(pf.extrasOwed) + ' still unpaid</span>' : '')) +
+        (pf.extrasWaived > 0 ? row('Penalties &amp; late fees you waived', '<span class="muted">' + money(pf.extrasWaived) + ' given up</span>') : '') +
         row('Collected from borrower so far', money(pf.collected)) +
         row('Paid to the bank so far', money(pf.bankPaid)) +
         row('<span class="strong">Net cash so far</span>', '<span class="strong" style="color:hsl(var(--' + (pf.netCash >= 0 ? 'success' : 'destructive') + '));">' + money(pf.netCash) + '</span>') +
@@ -1690,7 +1702,7 @@ function renderDetail(d) {
       '</table></div></div>'
     ;
   var mn = d.money;
-  var moneyBlock = mn && (d.amountPaid > 0 || mn.chargesOwed > 0 || mn.penaltiesCharged > 0 || mn.lateFeesCharged > 0)
+  var moneyBlock = mn && (d.amountPaid > 0 || mn.chargesOwed > 0 || mn.penaltiesCharged > 0 || mn.lateFeesCharged > 0 || mn.waivedTotal > 0)
     ? '<div class="card"><div class="card-head"><div><div class="card-title">Where the payments went</div>' +
         '<div class="card-desc">A payment pays penalties and late fees first. Only the rest reduces the loan.</div></div></div><div class="card-body">' +
       '<table class="kv">' +
@@ -1700,6 +1712,7 @@ function renderDetail(d) {
         row('Penalty collected', money(mn.penaltiesPaid) + ' <span class="muted tiny">of ' + money(mn.penaltiesCharged) + ' charged</span>') +
         row('Late fees collected', money(mn.lateFeesPaid) + ' <span class="muted tiny">of ' + money(mn.lateFeesCharged) + ' charged</span>') +
         (mn.chargesOwed > 0 ? row('Penalties &amp; fees still unpaid', '<span style="color:hsl(var(--destructive));">' + money(mn.chargesOwed) + '</span>') : '') +
+        (mn.waivedTotal > 0 ? row('Waived (forgiven, not money received)', money(mn.waivedTotal) + (mn.waivedUnused > 0 ? ' <span class="muted tiny">+ ' + money(mn.waivedUnused) + ' unused</span>' : '')) : '') +
         row('Left on the loan itself', money(mn.instalmentsLeft)) +
         (mn.overpaid > 0 ? row('Paid beyond what was due', money(mn.overpaid)) : '') +
       '</table></div></div>'
@@ -2369,6 +2382,31 @@ document.addEventListener('click', function(e) {
   if (!b) return;
   pmSetTarget(b.getAttribute('data-pm-month'), Number(b.getAttribute('data-pm-amount')));
 });
+/** Waiver mode: same dialog, but nothing is "paid" and no receipt is sent. */
+function pmApplyWaiverMode() {
+  var w = $('pm-waiver').checked, d = SELECTED || {};
+  $('pm-method-wrap').style.display = w ? 'none' : '';
+  $('pm-month-label').textContent = w ? 'Waiver is for (month) *' : 'Payment month *';
+  $('pm-amount-label').textContent = w ? 'Amount to waive *' : 'Amount *';
+  $('pm-date-label').textContent = w ? 'Date waived *' : 'Date paid *';
+  $('pm-receipt-label').textContent = w ? 'Reference' : 'Receipt no.';
+  $('pm-receipt').placeholder = w ? 'Auto (WV-...)' : 'Auto';
+  $('pm-save').textContent = w ? 'Record waiver' : 'Record & send receipt';
+  $('pm-title').textContent = (w ? 'Waive charges \u2014 ' : 'Record payment \u2014 ') + (d.borrowerName || '');
+  var mn = d.money, owed = mn ? Number(mn.chargesOwed || 0) : 0;
+  if (w) {
+    $('pm-amount').value = owed > 0 ? owed.toFixed(2) : '';
+    $('pm-desc').textContent = owed > 0
+      ? d.loanName + ' \u00B7 penalty + late fees still unpaid ' + money(owed) + '. Waiving removes them; nothing is counted as received.'
+      : d.loanName + ' \u00B7 no penalty or late fee is unpaid right now. A waiver can only forgive charges that have already been added.';
+  } else {
+    $('pm-desc').textContent = d.loanName + ' \u00B7 balance ' + money(d.balance);
+    var nb = d.nextBillDetails, ov = nb && nb.overdueSeparate > 0 && nb.overdueMonth ? nb : null;
+    $('pm-amount').value = ov ? Number(ov.overdueSeparate).toFixed(2) : (nb ? Number(nb.bill).toFixed(2) : Number(d.monthlyAmort || 0).toFixed(2));
+  }
+}
+document.addEventListener('change', function(e) { if (e.target && e.target.id === 'pm-waiver') pmApplyWaiverMode(); });
+
 function openPaymentDialog() {
   var d = SELECTED; if (!d || !SELECTED_ROW) { toast('info', 'Pick a loan first', 'Open a loan from the overview.'); return; }
   var months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -2399,6 +2437,7 @@ function openPaymentDialog() {
   }
   $('pm-date').value = now.toISOString().slice(0, 10);
   $('pm-receipt').value = ''; $('pm-method').value = 'GCash';
+  $('pm-waiver').checked = false; pmApplyWaiverMode();
   $('pm-title').textContent = 'Record payment — ' + d.borrowerName;
   $('pm-desc').textContent = d.loanName + ' · balance ' + money(d.balance);
   clearAlert('pm-alert');
@@ -2411,11 +2450,12 @@ function savePayment() {
   var amount = Number($('pm-amount').value);
   var date = $('pm-date').value;
   clearAlert('pm-alert');
-  if (!amount || amount <= 0) { showAlert('pm-alert', 'err', 'Enter an amount greater than zero.'); return; }
-  if (!date) { showAlert('pm-alert', 'err', 'Pick the date the payment was made.'); return; }
+  var isWaiver = $('pm-waiver').checked;
+  if (!amount || amount <= 0) { showAlert('pm-alert', 'err', isWaiver ? 'Enter the amount to waive.' : 'Enter an amount greater than zero.'); return; }
+  if (!date) { showAlert('pm-alert', 'err', isWaiver ? 'Pick the date of the waiver.' : 'Pick the date the payment was made.'); return; }
   var parts = date.split('-');
   var formatted = parts[1] + '/' + parts[2] + '/' + parts[0];
-  var method = $('pm-method').value, receipt = $('pm-receipt').value.trim();
+  var method = isWaiver ? 'Fee/Interest Waiver' : $('pm-method').value, receipt = $('pm-receipt').value.trim();
   var name = SELECTED ? SELECTED.borrowerName : '', loan = SELECTED ? SELECTED.loanName : '';
   var done = busy($('pm-save'), 'Recording…');
 
@@ -2438,7 +2478,11 @@ function savePayment() {
     renderPayTarget();
     patchListRow(rowIndex, res);
 
-    if (res.receiptSent === false) {
+    if (res.waiver) {
+      var note = res.waived > 0 ? money(res.waived) + ' of penalty / late fees removed' : 'nothing to waive yet';
+      if (res.waivedUnused > 0) note += ' \u00B7 ' + money(res.waivedUnused) + ' could not be applied (no such charge yet)';
+      toast(res.waived > 0 ? 'ok' : 'info', 'Waiver recorded', note + ' \u00B7 balance ' + money(res.balance) + (res.receiptSent === false ? ' \u00B7 notice not sent' : ' \u00B7 borrower notified'));
+    } else if (res.receiptSent === false) {
       toast('err', 'Payment saved, receipt did not send',
             'The money is recorded. Resend the receipt from the list below.');
     } else {
@@ -2563,6 +2607,7 @@ function renderReports(r) {
       '<div class="tile t-success"><div class="t-l">Penalties collected</div><div class="t-v num">' + money(inc.penaltiesPaid) + '</div><div class="tiny muted">of ' + money(inc.penaltiesCharged) + ' charged</div></div>' +
       '<div class="tile t-success"><div class="t-l">Late fees collected</div><div class="t-v num">' + money(inc.lateFeesPaid) + '</div><div class="tiny muted">of ' + money(inc.lateFeesCharged) + ' charged</div></div>' +
       '<div class="tile t-danger"><div class="t-l">Penalties &amp; fees unpaid</div><div class="t-v num">' + money(inc.chargesOwed) + '</div></div>' +
+      (inc.waived > 0 ? '<div class="tile"><div class="t-l">Waived (given up)</div><div class="t-v num">' + money(inc.waived) + '</div><div class="tiny muted">not counted as income</div></div>' : '') +
     '</div>' +
     '<div class="tiny muted" style="margin-bottom:6px;">Collected per month (interest + penalties &amp; fees)' + (inc.fee > 0 ? ' · processing fees collected ' + money(inc.fee) : '') + '</div>' +
     '<div class="bar-chart">' + inc.byMonth.map(function(m) {
@@ -2721,6 +2766,7 @@ function renderCollections() {
         (c.bestMonth ? '<div class="tile t-success"><div class="t-l">Best month</div><div class="t-v num">' + money(c.bestMonth.total) + '</div><div class="tiny muted" style="margin-top:3px;">' + esc(c.bestMonth.label) + '</div></div>' : '') +
         '<div class="tile"><div class="t-l">Payments logged</div><div class="t-v">' + c.count + '</div></div>' +
       '</div>' +
+      (c.waivedCount > 0 ? '<div class="tiny muted" style="margin-top:10px;">' + c.waivedCount + (c.waivedCount === 1 ? ' waiver' : ' waivers') + ' (' + money(c.waivedTotal) + ') are not included above: they forgive charges, they are not money received.</div>' : '') +
     '</div></div>' +
 
     '<div class="card"><div class="card-head">' +
@@ -3528,6 +3574,8 @@ function loanCard(l, uid) {
   var pct = progressOf(l.amountPaid, l.balance);
   var nb = l.nextBillDetails;
   var history = (l.history || []).map(function(h) {
+    if (h.waiver) return '<tr><td>' + esc(h.month) + ' <span class="badge badge-warning">waived</span></td><td class="right num">\u2212' + money(h.waivedApplied) +
+      '<div class="tiny muted">fees waived</div></td><td class="right muted">' + esc(h.date || '\u2014') + '</td></tr>';
     return '<tr><td>' + esc(h.month) + '</td><td class="right num">' + money(h.amount) + '</td>' +
       '<td class="right muted">' + esc(h.date || '\u2014') + '</td></tr>';
   }).join('');
