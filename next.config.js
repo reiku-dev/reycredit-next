@@ -1,7 +1,14 @@
 /** @type {import('next').NextConfig} */
 module.exports = {
-  async rewrites() {
-    return [{ source: '/', destination: '/index.html' }];
+  reactStrictMode: true,
+  // Type errors fail the build (run `npm run typecheck` locally); ESLint is not configured for this project.
+  eslint: { ignoreDuringBuilds: true },
+  poweredByHeader: false,
+  webpack(config) {
+    // lib/assets/signature.local.* is optional and git-ignored (the signature lives in a Vercel env var),
+    // so webpack not finding it on a deploy is expected, not a problem.
+    config.ignoreWarnings = [...(config.ignoreWarnings || []), { message: /signature\.local/ }];
+    return config;
   },
   // The PDF generator locates its font file at runtime via a path built from
   // require.resolve(), which Vercel's file-tracing step cannot follow statically

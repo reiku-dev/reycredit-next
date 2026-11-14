@@ -8,7 +8,7 @@ const t = { borrowers:[{id:1,name:"A",email:"a@x.com"},{id:2,name:"B",email:"b@x
   payments:[], users:[], email_log:[], config:[{key:"PENALTY_RATE",value:"3"}] };
 const fake = makeFakeDb(t); const load = Module._load;
 Module._load = function(r){ if (r.endsWith("/supabase")) return { db:()=>fake }; if (r.endsWith("/mailer")) return { sendMail: async()=>({success:true}) }; return load.apply(this, arguments); };
-require("../lib/functions.js").getAdvancedReport().then(r => {
+require("../lib/functions").getAdvancedReport().then(r => {
   const p = r.projected.map(x => x.label + ": " + x.expected + " (" + x.borrowers + " loans)");
   console.log(p.join("\n"));
   const flat = new Set(r.projected.map(x => x.expected)).size === 1;

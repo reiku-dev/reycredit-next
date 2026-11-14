@@ -44,7 +44,7 @@ Module._load = function (request, parent, isMain) {
   return origLoad.apply(this, arguments);
 };
 
-const fns = require('../lib/functions.js');
+const fns = require('../lib/functions');
 
 (async () => {
   console.log("=== getConfig ===");

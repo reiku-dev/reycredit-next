@@ -23,6 +23,8 @@ export/
 npm-debug.log*
 tests/browser/*.png
 
+tsconfig.tsbuildinfo
+
 # OS / editor
 .DS_Store
 Thumbs.db
@@ -30,4 +32,4 @@ Thumbs.db
 .vscode
 
 # lender signature (public repo) - set LENDER_SIGNATURE_DATA_URI in Vercel instead
-lib/assets/signature.local.js
+lib/assets/signature.local.*

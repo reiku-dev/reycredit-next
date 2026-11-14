@@ -7,29 +7,15 @@
  * The form's previewLoan() once divided the fee-inclusive total by the terms, so every
  * loan created or edited through the app with a fee came out with the fee counted twice
  * (P9,512.10 + P1,000 fee, 1 month: the screen showed an amort of P10,512.10 and billed
- * P11,512.10). This test loads the REAL previewLoan out of public/index.html and checks
+ * P11,512.10). This test runs the REAL loanPreview (lib/loan-math.ts) and checks
  * it against the REAL engine, so the two cannot drift apart again.
  */
-const fs = require("fs");
-const path = require("path");
-const vm = require("vm");
 const { buildSchedule, round2 } = require("../lib/engine");
+const { loanPreview, bankMonthlyFromRate, bankRateFromMonthly } = require("../lib/loan-math");
 
-const html = fs.readFileSync(path.join(__dirname, "..", "public", "index.html"), "utf8");
-const from = html.indexOf("function bankMonthlyFromRate(");
-const to = html.indexOf("function fillBankSelects()");
-if (from < 0 || to < 0 || to < from) throw new Error("Could not locate readLoanForm/previewLoan in public/index.html");
-
-/** Runs the page's own previewLoan against a stubbed form. */
+/** The loan form's own maths (lib/loan-math.ts), the same function the React forms call. */
 function formPreview({ principal, rate, terms, fee }) {
-  const values = { "t-principal": principal, "t-rate": rate, "t-terms": terms, "t-fee": fee, "t-start": "2026-10-05", "t-dueday": 10, "t-bank": "", "t-loanname": "x", "t-loantype": "Cash Loan" };
-  const sandbox = {
-    $: (id) => ({ value: values[id] === undefined ? "" : String(values[id]), textContent: "" }),
-    money: (n) => n, parseFloat, parseInt,
-  };
-  vm.createContext(sandbox);
-  vm.runInContext(html.slice(from, to), sandbox);
-  return sandbox.previewLoan("t");
+  return loanPreview({ principal, rate, terms, fee });
 }
 
 /** What the engine makes of a loan saved with these figures. */
@@ -75,6 +61,14 @@ function check(label, cond, detail) {
           }
         }
   check("form + engine agree across " + n + " combinations", bad.length === 0, bad.slice(0, 3).join("; "));
+}
+
+// 2b. Bank interest as a % per month round-trips with the monthly payment.
+{
+  const m = bankMonthlyFromRate(100000, 0.79, 12);
+  check("bank 0.79% x 12 months on 100,000 -> monthly 9,123.33", m === 9123.33, String(m));
+  check("...and back to ~0.79% per month", Math.abs(bankRateFromMonthly(100000, m, 12) - 0.79) < 0.001);
+  check("zero or missing inputs give 0", bankMonthlyFromRate(0, 1, 12) === 0 && bankMonthlyFromRate(1000, 0, 12) === 0 && bankRateFromMonthly(1000, 0, 12) === 0);
 }
 
 // 3. This test has to be able to fail: the old formula (fee inside the amort) must be caught.

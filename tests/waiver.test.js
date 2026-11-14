@@ -21,8 +21,8 @@ Module._load = function (request) {
   if (request.endsWith("/mailer") || request === "./mailer") return { sendMail: async (m) => { sent.push(m); return { success: true, id: "rs" }; } };
   return orig.apply(this, arguments);
 };
-const E = require("../lib/engine.js");
-const fns = require("../lib/functions.js");
+const E = require("../lib/engine");
+const fns = require("../lib/functions");
 
 let failures = 0;
 const check = (label, cond, detail) => { console.log((cond ? "PASS " : "FAIL ") + label + (cond || !detail ? "" : "  -> " + detail)); if (!cond) failures++; };

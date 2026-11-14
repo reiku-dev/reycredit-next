@@ -25,7 +25,7 @@ const t = {
 const sent = [];
 const fake = makeFakeDb(t); const load = Module._load;
 Module._load = function (r) { if (r.endsWith("/supabase")) return { db: () => fake }; if (r.endsWith("/mailer")) return { sendMail: async (m) => { sent.push(m); return { success: true, id: "x" }; } }; return load.apply(this, arguments); };
-const fns = require("../lib/functions.js");
+const fns = require("../lib/functions");
 let failures = 0;
 const check = (label, cond, detail) => { console.log((cond ? "PASS " : "FAIL ") + label + (cond || !detail ? "" : "  -> " + detail)); if (!cond) failures++; };
 

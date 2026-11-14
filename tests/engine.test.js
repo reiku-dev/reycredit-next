@@ -1,4 +1,4 @@
-const { buildSchedule, balanceFrom, statusFrom, nextBillFrom, liveLoanFigures, scoreBorrower, lendingGuide, remainingFrom } = require('../lib/engine.js');
+const { buildSchedule, balanceFrom, statusFrom, nextBillFrom, liveLoanFigures, scoreBorrower, lendingGuide, remainingFrom } = require('../lib/engine');
 
 function loan(o) { return Object.assign({ bank: { statementDay: 25, dueDay: 8, sameMonth: false } }, o); }
 

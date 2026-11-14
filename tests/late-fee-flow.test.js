@@ -41,9 +41,9 @@ Module._load = function (request) {
   if (request.endsWith("/mailer") || request === "./mailer") return { sendMail: async (m) => { sent.push(m); return { success: true, id: "rs" }; } };
   return orig.apply(this, arguments);
 };
-const fns = require("../lib/functions.js");
-const { buildAgreementHtml, buildSoaHtml } = require("../lib/documents.js");
-const { buildSchedule } = require("../lib/engine.js");
+const fns = require("../lib/functions");
+const { buildAgreementHtml, buildSoaHtml } = require("../lib/documents");
+const { buildSchedule } = require("../lib/engine");
 
 let failures = 0;
 const check = (label, cond, detail) => { console.log((cond ? "PASS " : "FAIL ") + label + (cond || !detail ? "" : "  -> " + detail)); if (!cond) failures++; };
@@ -70,7 +70,7 @@ const form = (over) => ({ name: "Ally Zzandra", email: "ally@x.com", contact: "0
   const noFee = buildAgreementHtml(cfg, { ...row, late_fee: 0 }, bank);
   check("...and a loan without a late fee is left as it was", !/Acknowledgment of charges/.test(noFee));
   check("a loan with no late fee keeps the original agreement wording", !/late payment fee/i.test(noFee) && /incurs a penalty of 3% per month on the overdue amount\./.test(noFee));
-  const { renderAgreementPdf } = require("../lib/pdf-documents.js");
+  const { renderAgreementPdf } = require("../lib/pdf-documents");
   const pdf = await renderAgreementPdf(cfg, row, bank);
   check("agreement PDF still renders with the fee", Buffer.isBuffer(pdf) && pdf.length > 3000 && pdf.slice(0, 4).toString() === "%PDF", String(pdf && pdf.length));
 
@@ -78,7 +78,7 @@ const form = (over) => ({ name: "Ally Zzandra", email: "ally@x.com", contact: "0
   const welcome = sent.find((m) => /Welcome/.test(m.subject));
   check("welcome email was sent with the agreement attached", !!welcome && welcome.attachments && welcome.attachments.length === 1);
 
-  const tpl = require("../lib/email-templates.js");
+  const tpl = require("../lib/email-templates");
   const rem = tpl.reminderEmail(cfg, { name: "Ally", loanName: "L", amount: 3933.33, dueStr: "November 08, 2026", days: 30, balance: 9000, remaining: 5, hasCarry: false, carryAmount: 0, lateFee: 200, overdueSeparate: 3965.15, mergesOn: "October 25, 2026" });
   check("reminder shows the overdue on its own line with the merge date", /Also overdue/.test(rem.html) && /3,965\.15/.test(rem.html) && /October 25, 2026/.test(rem.html));
   check("reminder names the flat late fee", /flat late payment fee of <strong>\u20B1200\.00/.test(rem.html));

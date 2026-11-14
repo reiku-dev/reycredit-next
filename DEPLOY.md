@@ -18,7 +18,7 @@ You can deploy from your terminal (section 3) or let Vercel deploy automatically
    values ('you@email.com', 'PASTE-THE-HASH-HERE', 'ADMIN');
    ```
    Never save the password or the hash in the project folder or in Git.
-5. **Turn on sign-in protection:** SQL Editor -> paste `login-lockout.sql` -> **Run**.
+5. **Add the extra tables and columns:** SQL Editor -> paste all of `run-in-supabase.sql` -> **Run**. It bundles the email log, bank cost, late fee and sign-in lockout updates, and is safe to run again at any time.
 
 ## 2. Resend (the sender)
 1. resend.com -> sign up -> **Domains -> Add** -> enter your domain (e.g. `reycredits.com`).

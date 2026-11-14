@@ -46,7 +46,7 @@ Module._load = function (request) {
   } };
   return orig.apply(this, arguments);
 };
-const fns = require("../lib/functions.js");
+const fns = require("../lib/functions");
 
 let failures = 0;
 const check = (label, cond, detail) => { console.log((cond ? "PASS " : "FAIL ") + label + (cond || !detail ? "" : "  -> " + detail)); if (!cond) failures++; };
