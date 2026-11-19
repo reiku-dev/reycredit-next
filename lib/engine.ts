@@ -149,7 +149,15 @@ function buildSchedule(loan: EngineLoan, payments: EnginePayment[], penaltyRateP
   const fee = Number(loan.processingFee) || 0;
   const payable = Number(loan.totalPayable) || 0;
   const bank = loan.bank || null;
-  const penalty = (Number(penaltyRatePct) || 0) / 100;
+  // A loan can carry its own penalty % (its agreement may differ from the company default);
+  // only a loan with none saved follows the company-wide rate.
+  const ownRate = loan.penaltyRate === null || loan.penaltyRate === undefined || loan.penaltyRate === ("" as unknown) ? null : Number(loan.penaltyRate);
+  const ownRateSet = ownRate !== null && Number.isFinite(ownRate);
+  const penalty = (ownRateSet ? (ownRate as number) : (Number(penaltyRatePct) || 0)) / 100;
+  // A loan with its OWN rate is run by its written agreement, which says "X% per month on the unpaid
+  // amount": every due date, the penalty is X% of the instalments still unpaid that day. It is not
+  // charged on earlier penalties or late fees (no penalty on a penalty) and not on a part that was
+  // already paid before the due date. The company-default loans keep the full-bill rule below.
   // Flat late payment fee, charged once for every cycle not settled by its due date. It is
   // stipulated per loan (it is printed in that loan's agreement), and an optional start date
   // keeps cycles that fell due before it was agreed from being charged retroactively.
@@ -192,12 +200,38 @@ function buildSchedule(loan: EngineLoan, payments: EnginePayment[], penaltyRateP
   const schedule: ScheduleRow[] = [];
   let carry = 0;
   let charged = 0;   // everything billed so far on schedule: instalments, fees, penalties, late fees
+  let chargedExtras = 0;   // of that: penalties and late fees only (payments clear these first)
+  const extraCharges: { accrued: Date; left: number }[] = [];   // each penalty / late fee, from the day after its due date
 
   /** Money received on or before a date, whichever month it was labelled for (undated = on time). */
   function receivedBy(date: Date): number {
     let t = 0;
     for (const p of payments) if (!p.date || day0(p.date) <= date) t += Number(p.amount) || 0;
     return round2(t);
+  }
+
+  /**
+   * How much of the money received by `date` went to instalments (and the fee) rather than to penalties
+   * and late fees. A payment clears the charges that already existed on the day it was made, oldest
+   * first, and the rest goes to the instalments; it can never pay a charge that arose later.
+   */
+  function instalmentsPaidBy(date: Date): number {
+    const dated = payments.filter((p) => !p.date || day0(p.date) <= date)
+      .sort((a, b) => (a.date ? day0(a.date).getTime() : -Infinity) - (b.date ? day0(b.date).getTime() : -Infinity));
+    const open = extraCharges.map((c) => ({ ...c }));
+    let toInstalments = 0;
+    for (const p of dated) {
+      let amt = Math.max(0, Number(p.amount) || 0);
+      const when = p.date ? day0(p.date) : null;
+      for (const c of open) {
+        if (amt <= 0) break;
+        if (c.left <= 0 || (when && c.accrued > when)) continue;
+        const take = Math.min(c.left, amt);
+        c.left = round2(c.left - take); amt = round2(amt - take);
+      }
+      toInstalments += amt;
+    }
+    return round2(toInstalments);
   }
 
   function paidFor(dueDate: Date, isFirstMonth: boolean) {
@@ -252,10 +286,16 @@ function buildSchedule(loan: EngineLoan, payments: EnginePayment[], penaltyRateP
       (now < penaltyFrom || round2(charged + amortPart + feePart - receivedBy(new Date(penaltyFrom.getFullYear(), penaltyFrom.getMonth(), penaltyFrom.getDate() - 1))) < SETTLED_THRESHOLD));
     // The whole bill of the cycle, however much of it was paid before the due date.
     const dueBill = round2(amortPart + feePart + dueArrears);
+    // Instalments (and fee) still unpaid on the due date: what was billed, less the money received by
+    // then once the penalties and late fees already charged have been cleared first.
+    let unpaidOnDue = ownRateSet ? round2((charged - chargedExtras) + amortPart + feePart - instalmentsPaidBy(dueDate)) : 0;
+    if (unpaidOnDue < SETTLED_THRESHOLD) unpaidOnDue = 0;
 
     if (past) {
       if (legacyRule) {
         if (out > 0) pen = round2(out * penalty);               // old rule: on what is still unpaid today
+      } else if (ownRateSet) {
+        if (unpaidOnDue > 0) pen = round2(unpaidOnDue * penalty);   // agreement rule: % of the instalments unpaid on the due date
       } else if (dueUnpaid > 0) {
         pen = round2(dueBill * penalty);                        // on the FULL bill, charged once, on the due date
       }
@@ -274,6 +314,8 @@ function buildSchedule(loan: EngineLoan, payments: EnginePayment[], penaltyRateP
       // future months never push a balance forward — they are not billed yet
     }
     charged = round2(charged + amortPart + feePart + pen + lateFee);
+    chargedExtras = round2(chargedExtras + pen + lateFee);
+    if (pen + lateFee > 0) extraCharges.push({ accrued: new Date(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate() + 1), left: round2(pen + lateFee) });
 
     const monthsAgo = Math.max(0, monthsBetween(now, dueDate));
     const recency = Math.pow(0.5, monthsAgo / RECENCY_HALFLIFE_MONTHS);

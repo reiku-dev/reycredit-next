@@ -59,6 +59,7 @@ export function EditLoanSheet({ loan, open, onOpenChange }: { loan: LoanDetail; 
     dueDay: loan.partner ? "" : String(loan.dueDay),
     lateFee: loan.lateFee ? String(loan.lateFee) : "",
     lateFeeFrom: loan.lateFeeFromISO,
+    penaltyRate: loan.penaltyRateOwn === null || loan.penaltyRateOwn === undefined ? "" : String(loan.penaltyRateOwn),
   });
   React.useEffect(() => {
     if (open) form.reset(form.formState.defaultValues as never);

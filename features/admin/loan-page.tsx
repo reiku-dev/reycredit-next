@@ -219,6 +219,7 @@ function OverviewTab({ loan }: { loan: LoanDetail }) {
             <KeyValue
               rows={[
                 { label: "Due day", value: `Day ${loan.dueDay} of the month` },
+                { label: "Late penalty", value: `${loan.penaltyRate}% per month${loan.penaltyRateOwn === null ? " (company default)" : ""}` },
                 { label: "Late payment fee", value: loan.lateFee ? <Money value={loan.lateFee} /> : "None" },
                 { label: "Late fee starts", value: loan.lateFeeFromISO || "Every cycle", hide: !loan.lateFee },
               ]}

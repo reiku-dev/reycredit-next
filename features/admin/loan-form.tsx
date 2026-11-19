@@ -47,6 +47,7 @@ export const loanFormSchema = z.object({
   dueDay: num("the due day", { min: 1, max: 31, int: true }),
   lateFee: num("the late fee", { min: 0 }),
   lateFeeFrom: z.string(),
+  penaltyRate: num("the penalty rate", { min: 0, max: 100 }),
   bankTerms: num("the bank's months", { min: 0, int: true }),
   bankMonthly: num("the bank's monthly payment", { min: 0 }),
   bankFee: num("the bank's fee", { min: 0 }),
@@ -60,7 +61,7 @@ export function emptyLoanForm(defaults: Partial<LoanFormValues> = {}): LoanFormV
   return {
     name: "", email: "", contact: "", address: "", idNum: "", ccEmail: "",
     loanType: "Cash Loan", loanName: "", startDate: todayISO(), principal: "", terms: "", rate: "", fee: "0",
-    partner: NO_BANK, dueDay: "", lateFee: "", lateFeeFrom: "", bankTerms: "", bankMonthly: "", bankFee: "",
+    partner: NO_BANK, dueDay: "", lateFee: "", lateFeeFrom: "", penaltyRate: "", bankTerms: "", bankMonthly: "", bankFee: "",
     ...defaults,
   };
 }
@@ -76,6 +77,8 @@ export function toServerPayload(v: LoanFormValues, opts: { includeBankCost: bool
     totalInterest: round2(f.interest), totalPayable: round2(f.total), monthlyAmort: round2(f.amort),
     partner: v.partner === NO_BANK ? "" : v.partner, dueDay: Number(v.dueDay) || 0,
     lateFee: Number(v.lateFee) || 0, lateFeeFrom: v.lateFeeFrom || "",
+    // blank = follow the company default penalty in Settings
+    penaltyRate: String(v.penaltyRate).trim() === "" ? "" : Number(v.penaltyRate),
   };
   if (opts.includeBankCost && (v.bankMonthly || v.bankFee || v.bankTerms)) {
     payload.bankMonthly = Number(v.bankMonthly) || 0;
@@ -221,6 +224,9 @@ export function LoanFormFields({
           </Field>
           <Field label="Late payment fee (₱)" htmlFor="lf-late" error={e.lateFee?.message} hint="Optional flat fee added to each late cycle.">
             <Input id="lf-late" inputMode="decimal" {...register("lateFee")} aria-invalid={!!e.lateFee} />
+          </Field>
+          <Field label="Penalty per month (%)" htmlFor="lf-penalty" error={e.penaltyRate?.message} hint={`Leave empty to use the company default${config?.PENALTY_RATE ? ` (${config.PENALTY_RATE}%)` : ""}. With its own rate, each due date charges that % of the instalments still unpaid (no penalty on penalties), as in a written agreement.`}>
+            <Input id="lf-penalty" inputMode="decimal" placeholder={config?.PENALTY_RATE ? String(config.PENALTY_RATE) : ""} {...register("penaltyRate")} aria-invalid={!!e.penaltyRate} />
           </Field>
           {mode === "edit" ? (
             <Field label="Late fee starts" htmlFor="lf-late-from" hint="Leave empty to start from today when adding a fee to an existing loan.">

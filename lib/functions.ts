@@ -255,6 +255,18 @@ async function allBanksById(): Promise<Map<number, BankInfo>> {
 }
 
 /** Maps a `loans` row (plus its bank) into the shape engine.js expects. */
+/** The loan's own penalty %, or null when it follows the company default. */
+function ownPenaltyRate(loanRow: LoanRow): number | null {
+  const v = loanRow.penalty_rate;
+  return v === null || v === undefined || (v as unknown) === "" ? null : Number(v);
+}
+
+/** The settings with this loan's own penalty % in place of the default, for emails and PDFs about this loan. */
+function loanCfg(cfg: Config, loanRow: LoanRow): Config {
+  const own = ownPenaltyRate(loanRow);
+  return own === null ? cfg : { ...cfg, PENALTY_RATE: String(own) };
+}
+
 function toEngineLoan(loanRow: LoanRow, banksById: Map<number, BankInfo>): EngineLoan {
   return {
     id: loanRow.id,
@@ -271,6 +283,7 @@ function toEngineLoan(loanRow: LoanRow, banksById: Map<number, BankInfo>): Engin
     loanName: loanRow.loan_name,
     lateFee: Number(loanRow.late_fee) || 0,
     lateFeeFrom: loanRow.late_fee_from ? new Date(loanRow.late_fee_from) : null,
+    penaltyRate: ownPenaltyRate(loanRow),
   };
 }
 
@@ -317,6 +330,8 @@ async function loanPayload(loanRow: LoanWithBorrower, banksById: Map<number, Ban
     monthlyRate: `${Number(loanRow.monthly_rate).toFixed(2)}%`, effectiveRate: `${(Number(loanRow.monthly_rate) * 12).toFixed(2)}%`,
     totalInterest: Number(loanRow.total_interest), processingFee: Number(loanRow.processing_fee),
     lateFee: Number(loanRow.late_fee) || 0, lateFeeFromISO: loanRow.late_fee_from ? fmtDate(loanRow.late_fee_from, "yyyy-MM-dd") : "",
+    // penaltyRateOwn: what is saved on this loan (null = follows the company default); penaltyRate: the rate actually applied.
+    penaltyRateOwn: ownPenaltyRate(loanRow), penaltyRate: ownPenaltyRate(loanRow) ?? penaltyRate,
     money: fig.money,
     // Your own cost and profit: admin only, never in what a borrower is sent.
     ...(admin ? { profit: fig.profit, bankMonthly: Number(loanRow.bank_monthly) || 0, bankFee: Number(loanRow.bank_fee) || 0, bankTerms: Number(loanRow.bank_terms) || 0 } : {}),
@@ -447,6 +462,26 @@ async function saveLateFee(loanId: number, d: any, existingRow: LoanRow | null) 
 }
 
 /**
+ * Stores a loan's own monthly penalty %. Blank = no override (follows the company default in Settings).
+ * Kept apart from the main save, like the late fee, so a database without penalty-rate.sql still saves
+ * everything else. A form that has no such field (undefined) leaves the saved value alone.
+ */
+async function savePenaltyRate(loanId: number, d: any, existingRow: LoanRow | null) {
+  if (d.penaltyRate === undefined) return { ok: true };
+  const blank = d.penaltyRate === null || String(d.penaltyRate).trim() === "";
+  const rate = blank ? null : Math.min(100, Math.max(0, round2(d.penaltyRate)));
+  const had = existingRow ? ownPenaltyRate(existingRow) : null;
+  if (rate === had) return { ok: true };
+  const { error } = await db().from("loans").update({ penalty_rate: rate }).eq("id", loanId);
+  if (error) {
+    return { ok: false, msg: /penalty_rate/i.test(error.message)
+      ? "The loan was saved, but the penalty rate was not: run penalty-rate.sql in the Supabase SQL editor first, then set it again."
+      : error.message };
+  }
+  return { ok: true };
+}
+
+/**
  * Stores what the bank charges you for a loan (admin only). Separate from the main save, like the
  * late fee, so a database that has not had bank-cost.sql run yet still saves everything else.
  */
@@ -501,6 +536,7 @@ async function addNewBorrower(d: any) {
     }).select().single();
     if (lErr) return { success: false, msg: lErr.message };
     const lf = await saveLateFee(loan.id, d, null);   // before the welcome email, so its agreement shows the fee
+    const pr = await savePenaltyRate(loan.id, d, null);
     const bc = await saveBankCost(loan.id, d, null);
 
     // A random 4-digit PIN for every borrower (the form no longer offers a password, and nothing is hard-coded).
@@ -508,7 +544,7 @@ async function addNewBorrower(d: any) {
     await db().from("users").insert({ email: email, password_hash: hashPassword(pin), role: "BORROWER" });
 
     try { await sendWelcomeEmailWithPin(loan.id, pin); } catch (e) { /* loan is saved either way */ }
-    return { success: true, msg: "Borrower saved. Welcome email sent." + (lf.ok ? "" : " " + lf.msg) + (bc.ok ? "" : " " + bc.msg), rowIndex: loan.id, pin };
+    return { success: true, msg: "Borrower saved. Welcome email sent." + (lf.ok ? "" : " " + lf.msg) + (pr.ok ? "" : " " + pr.msg) + (bc.ok ? "" : " " + bc.msg), rowIndex: loan.id, pin };
   } catch (e) { return { success: false, msg: e.message }; }
 }
 
@@ -525,10 +561,11 @@ async function addLoanToExistingBorrower(d: any) {
     }).select().single();
     if (error) return { success: false, msg: error.message };
     const lf = await saveLateFee(loan.id, d, null);   // before the notice, so the agreement it attaches shows the fee
+    const pr = await savePenaltyRate(loan.id, d, null);
     const bc = await saveBankCost(loan.id, d, null);
 
     try { await sendNewLoanNotification(loan.id); } catch (e) { /* loan is saved either way */ }
-    return { success: true, msg: "Loan added. Agreement emailed to the borrower." + (lf.ok ? "" : " " + lf.msg) + (bc.ok ? "" : " " + bc.msg), rowIndex: loan.id };
+    return { success: true, msg: "Loan added. Agreement emailed to the borrower." + (lf.ok ? "" : " " + lf.msg) + (pr.ok ? "" : " " + pr.msg) + (bc.ok ? "" : " " + bc.msg), rowIndex: loan.id };
   } catch (e) { return { success: false, msg: e.message }; }
 }
 
@@ -555,6 +592,8 @@ async function updateBorrower(rowIndex: number, d: any) {
     if (lErr) return { success: false, msg: lErr.message };
     const lf = await saveLateFee(rowIndex, d, loanRow);
     if (!lf.ok) return { success: false, msg: lf.msg };
+    const pr = await savePenaltyRate(rowIndex, d, loanRow);
+    if (!pr.ok) return { success: false, msg: pr.msg };
     const bc = await saveBankCost(rowIndex, d, loanRow);
     if (!bc.ok) return { success: false, msg: bc.msg };
     return { success: true };
@@ -640,7 +679,7 @@ async function recordPayment(rowIndex: number, paymentMonth: string, paymentAmou
     try {
       const { sendMail } = (require("./mailer") as typeof import("./mailer"));
       const templates = (require("./email-templates") as typeof import("./email-templates"));
-      const mail = templates.receiptEmail(cfg, {
+      const mail = templates.receiptEmail(loanCfg(cfg, loanRow), {
         name: loanRow.borrowers.name, loanName: loanRow.loan_name, amount: Number(paymentAmount),
         month: paymentMonth, dateStr: fmtDate(paidDate, "MM/dd/yyyy"), method: paymentMethod || "Cash",
         receiptNo: receipt, balance: fig.balance, paid: fig.paid,
@@ -694,7 +733,7 @@ async function sendPaymentReceipt(rowIndex: number, paymentMonth: string, paymen
     const banksById = await allBanksById();
     const payments = await paymentsForLoan(rowIndex);
     const fig = liveLoanFigures(toEngineLoan(loanRow, banksById), payments, Number(cfg.PENALTY_RATE) || 0);
-    const mail = templates.receiptEmail(cfg, {
+    const mail = templates.receiptEmail(loanCfg(cfg, loanRow), {
       name: loanRow.borrowers.name, loanName: loanRow.loan_name, amount: Number(paymentAmount),
       month: paymentMonth, dateStr: paymentDate, method: paymentMethod || "Cash", receiptNo,
       balance: fig.balance, paid: fig.paid, pct: 100, next: fig.next, remaining: fig.remaining, applied: appliedFor(fig, receiptNo, paymentAmount),
@@ -752,9 +791,9 @@ async function getDocumentHtml(rowIndex: number, type: string) {
     const bank = loanRow.bank_id ? banksById.get(loanRow.bank_id) : null;
 
     if (type === "agreement") {
-      return { success: true, filename: `Loan Agreement - ${loanRow.borrowers.name}.pdf`, html: buildAgreementHtml(cfg, loanRow, bank) };
+      return { success: true, filename: `Loan Agreement - ${loanRow.borrowers.name}.pdf`, html: buildAgreementHtml(loanCfg(cfg, loanRow), loanRow, bank) };
     }
-    return { success: true, filename: `SOA - ${loanRow.borrowers.name}.pdf`, html: buildSoaHtml(cfg, loanRow, bank, payments, built.schedule) };
+    return { success: true, filename: `SOA - ${loanRow.borrowers.name}.pdf`, html: buildSoaHtml(loanCfg(cfg, loanRow), loanRow, bank, payments, built.schedule) };
   } catch (e) { return { success: false, msg: e.message }; }
 }
 
@@ -1113,13 +1152,13 @@ async function sendWelcomeEmailWithPin(rowIndex: number, pin: string | null) {
     const cfg = await getConfig();
     const loanRow = await loanWithBorrower(rowIndex);
     if (!loanRow) return "\u274C Loan not found.";
-    const html = templates.welcomeEmail(cfg, { name: loanRow.borrowers.name, email: loanRow.borrowers.email, loanName: loanRow.loan_name, pin });
+    const html = templates.welcomeEmail(loanCfg(cfg, loanRow), { name: loanRow.borrowers.name, email: loanRow.borrowers.email, loanName: loanRow.loan_name, pin });
     const banksById = await allBanksById();
     const bank = loanRow.bank_id ? banksById.get(loanRow.bank_id) : null;
-    const pdf = await renderAgreementPdf(cfg, loanRow, bank);
+    const pdf = await renderAgreementPdf(loanCfg(cfg, loanRow), loanRow, bank);
     const attachments = [{ filename: `Loan Agreement - ${loanRow.borrowers.name}.pdf`, content: pdf, contentType: "application/pdf" }];
     const res = await sendMail({ to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email || undefined, subject: html.subject, html: html.html, fromName: cfg.COMPANY_NAME, attachments });
-    await logEmail({ loanId: rowIndex, borrowerName: loanRow.borrowers.name, to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email, type: "welcome", subject: html.subject, result: res, html: (pin ? templates.welcomeEmail(cfg, { name: loanRow.borrowers.name, email: loanRow.borrowers.email, loanName: loanRow.loan_name, pin: "\u2022\u2022\u2022\u2022" }).html : html.html), attachments });
+    await logEmail({ loanId: rowIndex, borrowerName: loanRow.borrowers.name, to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email, type: "welcome", subject: html.subject, result: res, html: (pin ? templates.welcomeEmail(loanCfg(cfg, loanRow), { name: loanRow.borrowers.name, email: loanRow.borrowers.email, loanName: loanRow.loan_name, pin: "\u2022\u2022\u2022\u2022" }).html : html.html), attachments });
     return res.success ? `\u2705 Welcome email sent to ${loanRow.borrowers.name}` : `\u274C ${res.msg}`;
   } catch (e) { return `\u274C ${e.message}`; }
 }
@@ -1136,7 +1175,7 @@ async function sendNewLoanNotification(rowIndex: number) {
     const payments = await paymentsForLoan(rowIndex);
     const built = buildSchedule(toEngineLoan(loanRow, banksById), payments, Number(cfg.PENALTY_RATE) || 0);
     const next = nextBillFrom(built);
-    const html = templates.newLoanEmail(cfg, {
+    const html = templates.newLoanEmail(loanCfg(cfg, loanRow), {
       name: loanRow.borrowers.name, loanName: loanRow.loan_name, principal: loanRow.principal,
       monthlyRate: `${Number(loanRow.monthly_rate).toFixed(2)}%`, fee: loanRow.processing_fee,
       totalInterest: loanRow.total_interest, totalPayable: loanRow.total_payable, terms: loanRow.terms,
@@ -1144,7 +1183,7 @@ async function sendNewLoanNotification(rowIndex: number) {
       lateFee: Number(loanRow.late_fee) || 0,
     });
     const bank = loanRow.bank_id ? banksById.get(loanRow.bank_id) : null;
-    const pdf = await renderAgreementPdf(cfg, loanRow, bank);
+    const pdf = await renderAgreementPdf(loanCfg(cfg, loanRow), loanRow, bank);
     const attachments = [{ filename: `Loan Agreement - ${loanRow.borrowers.name} - ${loanRow.loan_name}.pdf`, content: pdf, contentType: "application/pdf" }];
     const res = await sendMail({ to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email || undefined, subject: html.subject, html: html.html, fromName: cfg.COMPANY_NAME, attachments });
     await logEmail({ loanId: rowIndex, borrowerName: loanRow.borrowers.name, to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email, type: "new_loan", subject: html.subject, result: res, html: html.html, attachments });
@@ -1168,14 +1207,14 @@ async function sendMonthlyStatement(rowIndex: number) {
     const next = nextBillFrom(built);
     const pct = paid + balance > 0 ? Math.min(100, Math.round((paid / (paid + balance)) * 100)) : 100;
     const monthLabel = fmtDate(new Date(), "MMMM yyyy");
-    const html = templates.statementEmail(cfg, {
+    const html = templates.statementEmail(loanCfg(cfg, loanRow), {
       name: loanRow.borrowers.name, loanName: loanRow.loan_name, monthLabel, next, pct, balance, paid,
       monthlyAmort: loanRow.monthly_amort, remaining: balance <= 0 ? 0 : remainingFrom(built.schedule),
       recentPayments: payments.filter((p: any) => !isWaiver(p)).map((p: any) => ({ month: p.month, amount: p.amount, date: p.date ? fmtDate(p.date, "MM/dd/yyyy") : "" })),
     });
     // The email text promises an attached statement — it must actually be there.
     const bank = loanRow.bank_id ? banksById.get(loanRow.bank_id) : null;
-    const pdf = await renderSoaPdf(cfg, loanRow, bank, payments, built.schedule);
+    const pdf = await renderSoaPdf(loanCfg(cfg, loanRow), loanRow, bank, payments, built.schedule);
     const attachments = [{ filename: `SOA - ${loanRow.borrowers.name} - ${monthLabel}.pdf`, content: pdf, contentType: "application/pdf" }];
     const res = await sendMail({ to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email || undefined, subject: html.subject, html: html.html, fromName: cfg.COMPANY_NAME, attachments });
     await logEmail({ loanId: rowIndex, borrowerName: loanRow.borrowers.name, to: loanRow.borrowers.email, cc: loanRow.borrowers.cc_email, type: "statement", subject: html.subject, result: res, html: html.html, attachments });
@@ -1208,7 +1247,7 @@ async function sendDueDateReminder(rowIndex: number) {
     const amount = next ? next.bill : Number(loanRow.monthly_amort);
     const dueStr = next ? next.dueDate : fmtDate(built.firstDue, "MMMM dd, yyyy");
     const days = next ? Math.ceil((day0(new Date(next.dueDateObj)).getTime() - today().getTime()) / 86400000) : 0;
-    const html = templates.reminderEmail(cfg, {
+    const html = templates.reminderEmail(loanCfg(cfg, loanRow), {
       name: loanRow.borrowers.name, loanName: loanRow.loan_name, amount, dueStr, days, balance,
       remaining: remainingFrom(built.schedule), hasCarry: !!next?.hasCarry, carryAmount: next?.carryAmount || 0,
       lateFee: Number(loanRow.late_fee) || 0, overdueSeparate: next?.overdueSeparate || 0, mergesOn: next?.mergesOn || "",

@@ -81,3 +81,9 @@ create table if not exists login_attempts (
   reset_window_start timestamptz
 );
 alter table login_attempts enable row level security;
+
+-- ============================================================
+-- penalty-rate: each loan can carry its own monthly penalty %
+-- (empty = follows the company default in Settings)
+-- ============================================================
+alter table loans add column if not exists penalty_rate numeric(5,2);

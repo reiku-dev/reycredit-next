@@ -38,6 +38,8 @@ export interface EngineLoan {
   dueDay?: number | string;
   lateFee?: number;
   lateFeeFrom?: Date | string | null;
+  /** This loan's own monthly penalty %, as stated in its agreement. null/undefined = use the company default. */
+  penaltyRate?: number | null;
   /** A Date = cutoff for the due-date penalty rule, null = new rule for all cycles, undefined = default. */
   penaltyFrom?: Date | null;
   bankMonthly?: number;
@@ -142,6 +144,7 @@ export interface LoanRow {
   closed: boolean;
   late_fee?: number | null;
   late_fee_from?: string | null;
+  penalty_rate?: number | null;
   bank_monthly?: number | null;
   bank_fee?: number | null;
   bank_terms?: number | null;

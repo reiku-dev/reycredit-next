@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/engine.test.js && tsx tests/e2e.test.js && tsx tests/projection.test.js && tsx tests/loan-form.test.js && tsx tests/email-log.test.js && tsx tests/due-today.test.js && tsx tests/late-fee.test.js && tsx tests/late-fee-flow.test.js && tsx tests/late-fee-notice.test.js && tsx tests/announcement.test.js && tsx tests/penalty-due-date.test.js && tsx tests/money-breakdown.test.js && tsx tests/money-report.test.js && tsx tests/security.test.js && tsx tests/waiver.test.js && tsx tests/stale-email.test.js && tsx tests/no-cache.test.js",
+    "test": "tsx tests/engine.test.js && tsx tests/e2e.test.js && tsx tests/projection.test.js && tsx tests/loan-form.test.js && tsx tests/email-log.test.js && tsx tests/due-today.test.js && tsx tests/late-fee.test.js && tsx tests/late-fee-flow.test.js && tsx tests/late-fee-notice.test.js && tsx tests/announcement.test.js && tsx tests/penalty-due-date.test.js && tsx tests/money-breakdown.test.js && tsx tests/money-report.test.js && tsx tests/security.test.js && tsx tests/waiver.test.js && tsx tests/stale-email.test.js && tsx tests/no-cache.test.js && tsx tests/loan-penalty-rate.test.js && tsx tests/loan-penalty-flow.test.js",
     "test:browser": "python3 tests/browser/ui.test.py"
   },
   "dependencies": {
