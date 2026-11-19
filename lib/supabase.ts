@@ -14,7 +14,15 @@ function db() {
   if (!url || !key) {
     throw new Error("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set. Add them with `vercel env add`.");
   }
-  _client = createClient(url, key, { auth: { persistSession: false } });
+  // IMPORTANT: Next.js 14 caches every server-side fetch() by default — including
+  // the GET requests supabase-js sends to PostgREST — and `dynamic = "force-dynamic"`
+  // does NOT opt them out. Cron runs (GET, no cookies) were therefore served the
+  // payment list from the first run that ever made that query, so a payment recorded
+  // later never showed up in reminders/statements. Always bypass the Data Cache.
+  _client = createClient(url, key, {
+    auth: { persistSession: false },
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
+  });
   return _client;
 }
 

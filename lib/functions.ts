@@ -580,6 +580,28 @@ async function deleteBorrower(rowIndex: number /*, email, loanName — kept for 
 
 /* ---------------- payments ---------------- */
 
+/**
+ * Did we already email this borrower a statement or due-date reminder on/after the date a payment was made?
+ * If so, that email was worked out WITHOUT this payment and may wrongly say they are unpaid or overdue
+ * (typical case: a payment is logged a few days late, after the monthly statement went out).
+ */
+async function staleEmailFor(loanId: number, paidDate: Date) {
+  try {
+    const dayStart = new Date(Date.UTC(paidDate.getFullYear(), paidDate.getMonth(), paidDate.getDate()) - 8 * 3600 * 1000); // Manila midnight
+    const { data, error } = await db().from("email_log").select("email_type, created_at")
+      .eq("loan_id", loanId).eq("status", "sent").in("email_type", ["statement", "reminder"])
+      .gte("created_at", dayStart.toISOString()).order("created_at", { ascending: false }).limit(1);
+    if (error || !data || !data.length) return null;
+    const r: any = data[0];
+    const at = new Date(r.created_at);
+    return {
+      type: String(r.email_type),
+      date: fmtDate(at, "MM/dd/yyyy"),
+      time: at.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Manila" }),
+    };
+  } catch (e) { return null; }
+}
+
 async function recordPayment(rowIndex: number, paymentMonth: string, paymentAmount: number, paymentDate: string, receiptNo: string, paymentMethod: string) {
   try {
     const cfg = await getConfig();
@@ -635,8 +657,9 @@ async function recordPayment(rowIndex: number, paymentMonth: string, paymentAmou
     } catch (mailErr) { receiptSent = false; mailMsg = mailErr.message; }
 
     const wv = waiver ? waivedFor(fig, payments, receipt, paymentAmount) : null;
+    const staleEmail = await staleEmailFor(rowIndex, paidDate);
     return {
-      success: true, receiptNo: receipt, receiptSent, mailMsg, waiver, waived: wv ? wv.applied : 0, waivedUnused: wv ? wv.unused : 0,
+      success: true, receiptNo: receipt, receiptSent, mailMsg, waiver, staleEmail, waived: wv ? wv.applied : 0, waivedUnused: wv ? wv.unused : 0,
       msg: waiver ? `Waiver recorded for ${loanRow.borrowers.name}.` : `Payment recorded for ${loanRow.borrowers.name}.`,
       status: fig.statusText, balance: fig.balance, totalPaid: fig.paid, remaining: fig.remaining,
       detail: await loanPayload(loanRow, banksById, penaltyRate, { admin: true }),

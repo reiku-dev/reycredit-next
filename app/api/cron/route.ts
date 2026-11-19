@@ -12,6 +12,7 @@
 import * as functions from "../../../lib/functions";
 
 export const maxDuration = 60;
+export const fetchCache = "force-no-store"; // never serve DB reads from the Next.js Data Cache
 export const dynamic = "force-dynamic";
 
 function authorized(req: any) {

@@ -19,7 +19,7 @@ import { cn } from "@/lib/client/utils";
 
 export const PAYMENT_METHODS = ["Cash", "GCash", "Bank transfer", "BPI", "MariBank", "Check", "Other"];
 
-type PaymentResult = { success: true; receiptSent: boolean; mailMsg: string; waiver: boolean; waived: number; waivedUnused: number; receiptNo: string };
+type PaymentResult = { success: true; staleEmail: { type: string; date: string; time: string } | null; receiptSent: boolean; mailMsg: string; waiver: boolean; waived: number; waivedUnused: number; receiptNo: string };
 
 const schema = z.object({
   kind: z.enum(["payment", "waiver"]),
@@ -83,6 +83,21 @@ export function RecordPaymentForm({ loan, onDone, onCancel }: { loan: LoanDetail
         toast.success("Payment recorded", { description: res.receiptSent ? "A receipt was emailed to the borrower." : undefined });
       }
       if (!res.receiptSent) toast.warning("Receipt email not sent", { description: res.mailMsg || "Resend it from the Payments tab." });
+      if (res.staleEmail) {
+        const what = res.staleEmail.type === "statement" ? "statement" : "payment reminder";
+        toast.warning("The borrower may have an outdated email", {
+          description: `A ${what} was sent on ${res.staleEmail.date} at ${res.staleEmail.time}, before this payment was recorded. It may say they are unpaid or overdue.`,
+          duration: 60000,
+          action: {
+            label: "Send corrected statement",
+            onClick: () => {
+              void rpc("sendMonthlyStatement", loan.rowIndex).then((m) =>
+                typeof m === "string" && m.includes("\u274C") ? toast.error("Statement not sent", { description: m.replace(/^\S+\s*/, "") }) : toast.success("Corrected statement sent"),
+              );
+            },
+          },
+        });
+      }
       onDone?.();
     },
     onError: (e: Error) => toast.error("Couldn't save", { description: e.message }),

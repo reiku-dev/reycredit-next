@@ -18,6 +18,7 @@ const functions = allFunctions as unknown as Record<string, (...args: any[]) => 
 import { currentSession, createSessionCookie } from "../../../lib/auth";
 
 export const maxDuration = 60;
+export const fetchCache = "force-no-store"; // never serve DB reads from the Next.js Data Cache
 
 const PUBLIC_FNS = new Set(["validateLogin", "resetPasswordToDefault"]);
 // Borrower-callable functions take the caller's own email as their first
